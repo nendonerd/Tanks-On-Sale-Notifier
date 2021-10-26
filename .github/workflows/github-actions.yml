@@ -14,9 +14,9 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: tanks-info
-          path: ./artifact/tanks-info
+          path: /home/runner/work/Tanks-On-Sale-Notifier/Tanks-On-Sale-Notifier/artifact/tanks-info
       - run: go run get.go
       - uses: actions/upload-artifact@v2
         with:
           name: tanks-info
-          path: ./artifact/tanks-info
+          path: /home/runner/work/Tanks-On-Sale-Notifier/Tanks-On-Sale-Notifier/artifact/tanks-info
