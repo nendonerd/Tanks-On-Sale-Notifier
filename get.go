@@ -10,21 +10,23 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	runewidth "github.com/mattn/go-runewidth"
 )
 
-var artifactPath string = "./artifact/"
+var artifactDir string = "./artifact/"
 var artifactName string = "tanks-info"
+var artifactPath string = filepath.Join(artifactDir, artifactName)
 
 type mapper = map[string]interface{}
 
 var response mapper
 
 type detail struct {
-	price string
-	end   string
+	Price string
+	End   string
 }
 
 func main() {
@@ -68,7 +70,7 @@ func extract(list []interface{}) map[string]detail {
 			price := item["price"].(string)
 			end := item["nonselling_time"].(string)[5:16]
 
-			if m[name] == (detail{}) || price < m[name].price {
+			if m[name] == (detail{}) || price < m[name].Price {
 				m[name] = detail{price, end}
 			}
 
@@ -89,8 +91,8 @@ func printMap(m map[string]detail) {
 	// Print results
 	var b strings.Builder
 	for name, d := range m {
-		price := d.price
-		end := d.end
+		price := d.Price
+		end := d.End
 		width := runewidth.StringWidth(name)
 		space := strings.Repeat(" ", cellWidth+2-width)
 		fmt.Fprintf(&b, "%s%s￥%s  至%s\n", name, space, price, end)
@@ -104,7 +106,7 @@ func printMap(m map[string]detail) {
 // save the result to github artifacts, see https://github.com/actions/upload-artifact
 func save(m map[string]detail) {
 	// 1. check if path exist
-	err := os.MkdirAll(artifactPath, os.ModePerm)
+	err := os.MkdirAll(artifactDir, os.ModePerm)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -116,7 +118,7 @@ func save(m map[string]detail) {
 		log.Fatal(err)
 	}
 	// 3. save to path
-	os.WriteFile(filepath.Join(artifactPath, artifactName), b.Bytes(), 0644)
+	os.WriteFile(artifactPath, b.Bytes(), 0644)
 }
 
 // load the previous result from github artifacts, see https://github.com/actions/download-artifact
@@ -124,8 +126,21 @@ func load() map[string]detail {
 	// 1. check if file exist
 	// 2. if exist, read the file as map and returns it
 	// 3. else return an empty map
-	m := make(map[string]detail)
-	return m
+	if _, err := os.Stat(artifactPath); os.IsNotExist(err) {
+		m := make(map[string]detail)
+		return m
+	} else {
+		data, err := os.ReadFile(artifactPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		reader := bytes.NewReader(data)
+		var decodedMap map[string]detail
+		d := gob.NewDecoder(reader)
+		err = d.Decode(&decodedMap)
+		return decodedMap
+	}
 }
 
 // sort and compare keys between prev result and curr result, if match then abort, else
@@ -133,18 +148,42 @@ func diff(a, b map[string]detail) bool {
 	// 1. sort keys of both map
 	// 2. concat keys
 	// 3. compare, if different return true else false
-	return true
+	tokenA := sortAndJoin(a)
+	tokenB := sortAndJoin(b)
+	if tokenA != tokenB {
+		return true
+	} else {
+		return false
+	}
+}
+
+func sortAndJoin(m map[string]detail) string {
+	keys := make([]string, 0, len(m))
+	for k, _ := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, "|")
 }
 
 // format the result to a twitter post
 func format2Tweet(m map[string]detail) string {
 	// 1. concat keys
 	// 2. check whether exceed text limit, 280chars for twitter
-	return ""
+	var b strings.Builder
+	for name, d := range m {
+		fmt.Fprintf(&b, "|%s:￥%s|", name, d.Price)
+	}
+	tweet := b.String()
+	if runewidth.StringWidth(tweet) > 280 {
+		tweet = tweet[:275] + "..."
+	}
+	return tweet
 }
 
 // call twitter api to post, the api key is stored in github secrets
 func post(tweet string) {
 	// 1. read apikey from github secrets
 	// 2. call twitter api
+
 }
